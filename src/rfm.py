@@ -27,16 +27,18 @@ def assign_segment(row):
         return "Others"
 
 
-def calculate_rfm_scores(rfm_df):
+def calculate_rfm_scores(rfm_df, run_date):
     """
     Create RFM scores and customer segments.
     """
+    # Add run date to the DataFrame
+    rfm_df["run_date"] = run_date
 
     # Recency Score (lower recency is better)
-    rfm_df["r_score"] = pd.qcut(
-        rfm_df["recency_days"],
+    rfm_df["r_score"] =pd.qcut(
+        rfm_df["recency_days"].rank(method="first"),
         q=5,
-        labels=[5, 4, 3, 2, 1]
+        labels=[5,4,3,2,1]
     ).astype(int)
 
     # Frequency Score (higher frequency is better)
@@ -66,7 +68,6 @@ def calculate_rfm_scores(rfm_df):
         axis=1
     )
 
-    # Add run date
-    rfm_df["run_date"] = date.today()
+  
 
     return rfm_df

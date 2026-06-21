@@ -16,7 +16,7 @@ def get_connection(mode="read"):
     """
 
     # Find project root folder
-    project_root = Path.cwd().parent
+    project_root = Path(__file__).resolve().parent.parent
 
     # Build path to .env file
     env_path = project_root / ".env"
