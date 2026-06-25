@@ -1,132 +1,171 @@
 # Daily Customer RFM Pipeline
 
-A daily analytics pipeline that transforms PostgreSQL order data into actionable customer segments for marketing and retention analysis.
+A Python and PostgreSQL pipeline that transforms e-commerce order data into daily customer segments for targeted marketing and retention.
 
-**Result:** Processed **8,438 customers** and identified **1,846 Champions**, **1,338 At-Risk customers**, and **529 Big Spenders** in the latest run.
+## What is RFM?
 
-## What this project demonstrates
+RFM is a customer segmentation method based on three purchasing behaviours:
 
-- PostgreSQL extraction using parameterized SQL
-- 90-day customer aggregation
-- Quantile-based RFM scoring
-- Business-focused customer segmentation
-- Idempotent PostgreSQL upserts
-- Environment-based credential management
-- Dry-run support for safe validation
-- Notebook execution compatible with daily scheduling
+- **Recency:** How recently a customer placed an order
+- **Frequency:** How frequently a customer places orders
+- **Monetary Value:** How much money a customer spends
 
-## Pipeline overview
+Together, these metrics help identify valuable, loyal, inactive and at-risk customers.
+
+## Why does it matter?
+
+Customers behave differently and should not all receive the same marketing treatment.
+
+RFM segmentation helps a business understand these differences and take targeted actions, such as:
+
+- Rewarding loyal and high-value customers
+- Retaining customers who may be at risk
+- Re-engaging inactive customers
+- Creating more relevant marketing campaigns
+- Using marketing budgets more effectively
+
+This project automates that process by converting raw order data into daily, actionable customer segments.
+
+## How the pipeline works
+
+The pipeline performs the following steps:
+
+1. Connects to a Supabase PostgreSQL database using environment variables.
+2. Reads order data from `ecom.orders`.
+3. Excludes cancelled orders.
+4. Calculates each customer’s:
+   - Recency based on their latest valid order
+   - Frequency over the last 90 days
+   - Monetary value over the last 90 days
+5. Assigns R, F and M scores from 1 to 5 using quantile-based scoring.
+6. Combines the scores into an RFM score such as `555`.
+7. Assigns customer segments such as Champions, Loyal and At Risk.
+8. Prepares the daily results for an idempotent PostgreSQL upsert.
 
 ```mermaid
 flowchart LR
-    A["PostgreSQL<br/>ecom.orders"] --> B["Extract valid orders"]
+    A["PostgreSQL orders"] --> B["Exclude cancelled orders"]
     B --> C["Calculate RFM metrics"]
-    C --> D["Assign scores 1–5"]
+    C --> D["Assign scores from 1–5"]
     D --> E["Create customer segments"]
-    E --> F["Upsert daily snapshot<br/>customer_rfm_daily"]
+    E --> F["Prepare daily upsert"]
 ```
-
-The pipeline:
-
-1. Reads orders from `ecom.orders`.
-2. Excludes cancelled orders.
-3. Calculates customer-level RFM metrics.
-4. Assigns percentile-based scores from 1 to 5.
-5. Classifies customers into business segments.
-6. Prepares an idempotent daily database upsert.
-
-## Latest pipeline result
-
-The pipeline was executed in dry-run mode on **June 21, 2026** using read-only database access.
-
-| Segment | Customers | Share |
-|---|---:|---:|
-| Others | 2,036 | 24.1% |
-| Champions | 1,846 | 21.9% |
-| Hibernating | 1,748 | 20.7% |
-| At Risk | 1,338 | 15.9% |
-| Loyal | 941 | 11.2% |
-| Big Spenders | 529 | 6.3% |
-| **Total** | **8,438** | **100%** |
-
-The run successfully extracted, transformed, scored, segmented, and prepared all **8,438 rows** for loading.
-
-Database insertion was intentionally skipped because only read-only credentials were available.
-
-## RFM definitions
-
-| Metric | Definition | Scoring |
-|---|---|---|
-| Recency | Days since the latest non-cancelled order | Fewer days = higher score |
-| Frequency | Number of orders in the last 90 days | More orders = higher score |
-| Monetary | Total order value in the last 90 days | More spending = higher score |
-
-Each metric receives a score from **1 to 5**.
-
-The three scores are combined into an RFM code. For example:
-
-```text
-555 = highest recency, frequency and monetary scores
-```
-
-## Customer segments
-
-| Segment | Rule |
-|---|---|
-| Champions | R ≥ 4, F ≥ 4 and M ≥ 4 |
-| Loyal | F ≥ 4 and R ≥ 3 |
-| Big Spenders | M ≥ 4 and F ≤ 3 |
-| At Risk | R ≤ 2 and F ≥ 3 |
-| Hibernating | R ≤ 2 and F ≤ 2 |
-| Others | All remaining customers |
 
 ## Tech stack
 
 - Python
-- PostgreSQL / Supabase
+- PostgreSQL
+- Supabase
 - pandas
 - psycopg2
-- Jupyter
+- Jupyter Notebook
 - SQL
+
+## RFM calculations
+
+| Metric | Calculation | Better score |
+|---|---|---|
+| Recency | Days since the latest non-cancelled order | Fewer days |
+| Frequency | Number of orders in the last 90 days | More orders |
+| Monetary Value | Total order value in the last 90 days | Higher spending |
+
+Each metric receives a score between 1 and 5.
+
+The scores are combined into a three-digit string:
+
+```text
+R score + F score + M score
+```
+
+For example, `555` represents a customer with the highest score for all three metrics.
+
+Quantile-based scoring was selected because it adapts to the distribution of the customer data instead of relying on fixed business thresholds.
+
+## Customer segments
+
+| Segment | Rule | Possible action |
+|---|---|---|
+| Champions | R ≥ 4, F ≥ 4 and M ≥ 4 | Reward and retain |
+| Loyal | F ≥ 4 and R ≥ 3 | Offer loyalty benefits |
+| Big Spenders | M ≥ 4 and F ≤ 3 | Encourage repeat purchases |
+| At Risk | R ≤ 2 and F ≥ 3 | Run win-back campaigns |
+| Hibernating | R ≤ 2 and F ≤ 2 | Send re-engagement offers |
+| Others | All remaining customers | Continue monitoring |
+
+These rules are starting points. In a production system, they should be calibrated using business goals, customer behaviour and campaign performance.
 
 ## Repository structure
 
 ```text
 rfm-daily-pipeline/
 ├── notebooks/
-│   └── rfm_daily.ipynb          # End-to-end pipeline orchestration
+│   └── rfm_daily.ipynb
 ├── sql/
-│   ├── customer_rfm_metrics.sql # RFM metric extraction
-│   └── create_customer_rfm_daily.sql
+│   ├── create_customer_rfm_daily.sql
+│   └── customer_rfm_metrics.sql
 ├── src/
-│   ├── db.py                    # Database connections
-│   ├── rfm.py                   # Scoring and segmentation
-│   └── upsert.py                # Idempotent database load
+│   ├── __init__.py
+│   ├── db.py
+│   ├── rfm.py
+│   └── upsert.py
 ├── .env.example
+├── .gitignore
 ├── requirements.txt
 └── README.md
 ```
 
-Although the notebook coordinates the run, the database, transformation, and loading logic is separated into reusable Python modules.
+### Main components
 
-## Idempotent loading
+- `notebooks/rfm_daily.ipynb` — orchestrates the complete pipeline
+- `src/db.py` — manages read and write database connections
+- `src/rfm.py` — calculates scores and assigns customer segments
+- `src/upsert.py` — prepares and executes the idempotent upsert
+- `sql/customer_rfm_metrics.sql` — calculates the raw RFM metrics
+- `sql/create_customer_rfm_daily.sql` — creates the output table
 
-The output table uses this composite primary key:
+## Output table
+
+The pipeline prepares results for:
+
+```text
+ecom.customer_rfm_daily
+```
+
+The table contains:
+
+| Column | Description |
+|---|---|
+| `run_date` | Date on which the pipeline was run |
+| `customer_id` | Unique customer identifier |
+| `recency_days` | Days since the customer’s latest order |
+| `frequency_orders` | Orders placed during the last 90 days |
+| `monetary_value` | Total amount spent during the last 90 days |
+| `r_score` | Recency score from 1 to 5 |
+| `f_score` | Frequency score from 1 to 5 |
+| `m_score` | Monetary score from 1 to 5 |
+| `rfm_score` | Combined score, such as `555` |
+| `rfm_segment` | Assigned customer segment |
+
+The output table uses a composite primary key:
 
 ```sql
 PRIMARY KEY (run_date, customer_id)
 ```
 
-The loader uses:
+This preserves daily history while allowing only one record per customer for each run date.
+
+## Idempotent loading
+
+The load step uses PostgreSQL’s `ON CONFLICT` clause:
 
 ```sql
 ON CONFLICT (run_date, customer_id)
 DO UPDATE
 ```
 
-Running the pipeline more than once for the same date therefore updates existing customer records instead of creating duplicates.
+This makes the pipeline idempotent. Running it again for the same date updates the existing customer records instead of inserting duplicates.
 
-## Run locally
+## Installation
 
 ### 1. Clone the repository
 
@@ -153,21 +192,29 @@ Activate it on Linux or macOS:
 source venv/bin/activate
 ```
 
-### 3. Install dependencies
+### 3. Install the dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure credentials
+## Environment variables
 
-Copy the example configuration:
+Copy `.env.example` to `.env`.
+
+Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Add the database values to `.env`:
+Linux or macOS:
+
+```bash
+cp .env.example .env
+```
+
+Configure the database credentials:
 
 ```env
 DB_HOST=your-database-host
@@ -181,38 +228,65 @@ WRITE_USER=your-write-user
 WRITE_PASSWORD=your-write-password
 ```
 
-The real `.env` file is excluded from Git.
+Credentials are loaded from environment variables and are not hardcoded in the source code.
 
-### 5. Execute the notebook
+The `.env` file is excluded from Git and must never be committed.
 
-Launch Jupyter from the `notebooks` directory:
+## Running the pipeline
 
-```powershell
+Start Jupyter from the notebook directory:
+
+```bash
 cd notebooks
 jupyter notebook rfm_daily.ipynb
 ```
 
-Run all cells from top to bottom.
+Open the notebook and run all cells from top to bottom.
 
-## Dry-run and write modes
+The pipeline uses the current date as its run date:
 
-Writing is disabled by default:
+```python
+run_date = date.today()
+```
+
+The same date is used when calculating the metrics and preparing the output rows.
+
+## Dry-run mode
+
+Database writing is disabled by default:
 
 ```python
 WRITE_ENABLED = False
 ```
 
-Dry-run mode executes the extraction and transformation stages without changing the database.
+In dry-run mode, the pipeline:
 
-After the output table and write permissions are available:
+- Connects with read-only credentials
+- Extracts order data
+- Calculates RFM metrics
+- Assigns scores and customer segments
+- Prepares the output rows
+- Skips the database upsert
+
+This allows the transformation logic to be tested safely without write access.
+
+## Enabling database writes
+
+After the output table and write credentials are available, change:
 
 ```python
 WRITE_ENABLED = True
 ```
 
+The pipeline will then connect using the write credentials and upsert the prepared rows into `ecom.customer_rfm_daily`.
+
+Database insertion has not yet been verified because only read-only access is currently available.
+
 ## Daily scheduling
 
-The notebook can be executed non-interactively with `nbconvert`:
+The notebook can be executed non-interactively using `nbconvert`.
+
+From the repository root:
 
 ```bash
 jupyter nbconvert \
@@ -224,39 +298,25 @@ jupyter nbconvert \
 Example cron schedule for 2:00 AM daily:
 
 ```cron
-0 2 * * * cd /path/to/rfm-daily-pipeline && /path/to/python -m jupyter nbconvert --to notebook --execute notebooks/rfm_daily.ipynb --output /tmp/rfm_daily_latest.ipynb
+0 2 * * * cd /path/to/rfm-daily-pipeline/notebooks && /path/to/python -m jupyter nbconvert --to notebook --execute rfm_daily.ipynb --output /tmp/rfm_daily_latest.ipynb
 ```
 
-On Windows, the equivalent command can be configured in Task Scheduler.
+On Windows, the equivalent command can be configured using Task Scheduler:
 
-## Output schema
-
-The daily output contains:
-
-```text
-run_date
-customer_id
-recency_days
-frequency_orders
-monetary_value
-r_score
-f_score
-m_score
-rfm_score
-rfm_segment
+```powershell
+cd D:\path\to\rfm-daily-pipeline\notebooks
+python -m jupyter nbconvert --to notebook --execute rfm_daily.ipynb --output executed_rfm_daily.ipynb
 ```
 
-The table creation statement is available in:
-
-```text
-sql/create_customer_rfm_daily.sql
-```
+Use absolute paths when configuring a scheduler.
 
 ## Current status
 
-- Extraction: complete
-- RFM transformation: complete
-- Customer segmentation: complete
-- Idempotent upsert implementation: complete
-- Dry-run validation: complete
-- Database write verification: pending write access
+- PostgreSQL extraction implemented
+- Cancelled-order filtering implemented
+- RFM calculations implemented
+- Quantile scoring implemented
+- Customer segmentation implemented
+- Idempotent upsert implemented
+- Read-only dry run completed
+- Database write verification pending write access
